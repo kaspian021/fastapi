@@ -1,3 +1,4 @@
+
 import json
 import sqlite3
 from sqlite3 import Error
@@ -38,6 +39,31 @@ class DataModel:
         self.colors = map['colors']
         self.warranty = map['warranty']
         self.isAvailable = map['isAvailable']
+        
+    def tojson(self,data:list):
+        try:
+            json_data:list[dict[str,DataModel]] = []
+            for item in data:
+                json_data.append({
+                "id":  item['id'],
+                "name": item['name'],
+                "brand": item['brand'],
+                "category": item['category'],
+                "price": item['price'],
+                "discount": item['discount'],
+                "finalPrice": item['finalPrice'],
+                "currency": item['currency'],
+                "stock": item['stock'],
+                "rating": item['rating'],
+                "colors": item['colors'],
+                "warranty":item['warranty'],
+                "isAvailable": item['isAvailable']
+            })
+            return json_data
+        except Exception as e:
+            print(e)
+            raise HTTPException(status_code=500, detail="An error occurred while converting to JSON.")
+        
 
 allData = {
     "products": [
@@ -265,7 +291,35 @@ async def add_list_and_database(add_data=Body(example={
         print(e)
         raise HTTPException(status_code=500,detail=f'خطای مورد نظر این است {e} ')
 
+@app.put('/update_product')
+async def update_product(product_id:int,product_item=Body(example={
+            "id": 10,
+            "name": "ماشین اصلاح فیلیپس سری 7000",
+            "brand": "Philips",
+            "category": "لوازم شخصی",
+            "price": 3_500_000,
+            "discount": 15,
+            "finalPrice": 2_975_000,
+            "currency": "تومان",
+            "stock": 56,
+            "rating": 4.5,
+            "colors": ["نقره‌ای"],
+            "warranty": "24 ماهه",
+            "isAvailable": True
+        })):
+    for produc in allData['products']:
+        if produc['id']==product_id:
+            produc.update({key:value for key, value in product_item.items() if key in ['name',"brand","category","price","colors"]})
+            return HTTPException(status_code=200,detail='عملیات با موفقیت انجام شد')
+    raise HTTPException(status_code=400, detail="Product not found")
 
+@app.delete('/delete_product{product_id}')
+async def delete_product(product_id:int):
+    for index,produc in enumerate(allData['products']):
+        if produc['id']==product_id:
+            delete_product=allData['products'].pop(index)
+            return delete_product
+    raise HTTPException(status_code=404, detail="Product not found")
 
 
 @app.get('/get_all_products')
@@ -275,6 +329,8 @@ async def get_all_products():
         db = DatabaseProducts()
         _database = await db.get_query()
         db.close()
+        formater:DataModel= DataModel()
+        formater.tojson(_database)
         if _database is not None:
             return _database
         else:
@@ -317,16 +373,16 @@ class DatabaseProducts:
         dataProduct.fromjson(data)
         try:
             colors= json.dumps(dataProduct.colors)
-            isAvailable= 1 if dataProduct.isAvailable else 0
+            isAvailable= dataProduct.isAvailable if 1  else 0
+            
+            
             
             self.database.execute('''
                        INSERT INTO products(id, name, brand, category, price, discount, finalPrice, currency, 
                         stock, rating, colors, warranty, isAvailable) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
                        ''', (
-            dataProduct.id, dataProduct.name, dataProduct.brand, dataProduct.category, dataProduct.price,
-            dataProduct.discount, dataProduct.finalPrice, dataProduct.currency, dataProduct.stock,
-            dataProduct.rating, colors, dataProduct.warranty,
-            isAvailable
+                        [dataProduct.id, dataProduct.name, dataProduct.brand, dataProduct.category, dataProduct.price, dataProduct.discount, dataProduct.finalPrice, 
+                        dataProduct.currency, dataProduct.stock, dataProduct.rating, colors, dataProduct.warranty, isAvailable]
             ))
             self.con.commit()
             return True
@@ -339,7 +395,7 @@ class DatabaseProducts:
         try:
             
             self.database.execute('SELECT * FROM products WHERE isAvailable = 1 ORDER BY id ASC')
-            return self.database.fetchmany()
+            return self.database.fetchall()
         except sqlite3.Error as e:
             print(e)
             return []
